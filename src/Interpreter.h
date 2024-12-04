@@ -41,6 +41,13 @@ private:
     return {};
   }
 
+  std::any visitWhileStmt(std::shared_ptr<While> stmt) override {
+    while(isTruthy(evaluate(stmt->condition))) {
+      execute(stmt->body);
+    }
+    return {};
+  }
+
   std::any visitBlockStmt(std::shared_ptr<Block> stmt) override {
     executeBlock(stmt->statements, std::make_shared<Environment>(environment));
     return {};
