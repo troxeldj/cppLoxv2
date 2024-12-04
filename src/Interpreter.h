@@ -4,22 +4,86 @@
 #include <stdexcept>
 #include <iostream>
 #include "Expr.h"
+#include "Stmt.h"
+#include "Environment.h"
 
-
-class Interpreter : public ExprVisitor {
+class Interpreter : public ExprVisitor, public StmtVisitor {
+  std::shared_ptr<Environment> environment{new Environment};
 public:
-  void interpret(std::shared_ptr<Expr> expr) {
+
+  Interpreter() = default;
+
+  void interpret(std::vector<std::shared_ptr<Stmt>>& statements) {
     try {
-      std::any value = evaluate(expr);
-      std::cout << stringify(value) << std::endl;
+      for(std::shared_ptr<Stmt>& stmt : statements) {
+        execute(stmt);
+      }
     } catch(const std::runtime_error& e) {
-      std::cout << e.what() << std::endl;
+      std::cerr << e.what() << std::endl;
     }
   }
 
 private:
   std::any evaluate(std::shared_ptr<Expr> expr) {
     return expr->accept(*this);
+  }
+
+  void execute(std::shared_ptr<Stmt> stmt) {
+    stmt->accept(*this);
+  }
+
+  std::any visitIfStmt(std::shared_ptr<If> stmt) override {
+    if(isTruthy(evaluate(stmt->condition))) {
+      execute(stmt->thenBranch);
+    } else if(stmt->elseBranch != nullptr) {
+      execute(stmt->elseBranch);
+    }
+    return {};
+  }
+
+  std::any visitBlockStmt(std::shared_ptr<Block> stmt) override {
+    executeBlock(stmt->statements, std::make_shared<Environment>(environment));
+    return {};
+  }
+
+  void executeBlock(std::vector<std::shared_ptr<Stmt>> statements, std::shared_ptr<Environment> environment) {
+    std::shared_ptr<Environment> previous = this->environment;
+    try {
+      this->environment = environment;
+      for (std::shared_ptr<Stmt>& stmt : statements) {
+        execute(stmt);
+      }
+    } catch (...) {
+      this->environment = previous;
+      throw;
+    }
+    this->environment = previous;
+  }
+
+  std::any visitExpressionStmt(std::shared_ptr<Expression> stmt) override {
+    evaluate(stmt->expression);
+    return {};
+  }
+
+  std::any visitPrintStmt(std::shared_ptr<Print> stmt) override {
+    std::any value = evaluate(stmt->expression);
+    std::cout << stringify(value) << std::endl;
+    return {};
+  }
+
+  std::any visitVarStmt(std::shared_ptr<Var> stmt) override {
+    std::any value = nullptr;
+    if(stmt->initializer != nullptr) {
+      value = evaluate(stmt->initializer);
+    }
+    environment->define(stmt->name.lexeme, value);
+    return {};
+  }
+
+  std::any visitAssignExpr(std::shared_ptr<Assign> expr) override {
+    std::any value = evaluate(expr->value);
+    environment->assign(expr->name, value);
+    return value;
   }
 
   std::any visitBinaryExpr(std::shared_ptr<Binary> expr) override {
@@ -86,6 +150,22 @@ private:
     return {};
   }
 
+  std::any visitVariableExpr(std::shared_ptr<Variable> expr) override {
+    return environment->get(expr->name);
+  }
+
+  std::any visitLogicalExpr(std::shared_ptr<Logical> expr) override {
+    std::any left = evaluate(expr->left);
+    if(expr->op.type == OR) {
+      if(isTruthy(left)) return left;
+    } else {
+      if(!isTruthy(left)) return left;
+    }
+    return evaluate(expr->right);
+  }
+
+  
+
   bool isEqual(std::any left, std::any right) {
     if(left.type() == typeid(nullptr) && right.type() == typeid(nullptr)) return true;
 
@@ -120,7 +200,7 @@ private:
     throw std::runtime_error("Operands must be numbers.");   
   }
 
-  bool isTruthy(std::any& value) {
+  bool isTruthy(std::any value) {
     if(value.type() == typeid(nullptr)) return false;
     if(value.type() == typeid(bool)) return std::any_cast<bool>(value);
     return true;

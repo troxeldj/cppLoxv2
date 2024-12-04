@@ -9,6 +9,7 @@
 #include <vector>
 #include "Token.h"
 #include "Expr.h"
+#include "Stmt.h"
 #include "Lox.h"
 
 
@@ -24,16 +25,116 @@ public:
        Parser(const std::vector<Token>& tokens)
        : tokens(std::move(tokens)) {}
 
-       std::shared_ptr<Expr> parse() {
+       std::vector<std::shared_ptr<Stmt>> parse() {
+              std::vector<std::shared_ptr<Stmt>> statements;
+              while(!isAtEnd()) {
+                     statements.push_back(declaration());
+              }
+              return statements;
+       }
+
+private:
+       std::shared_ptr<Stmt> declaration() {
               try {
-                     return expression();
-              } catch (const ParseError& e) {
+                     if(match(VAR)) return varDeclaration();
+                     return statement();
+              } catch(const ParseError& error) {
+                     syncronize();
                      return nullptr;
               }
        }
 
+       std::shared_ptr<Stmt> varDeclaration() {
+              Token name = consume(IDENTIFIER, "Expect variable name.");
+              std::shared_ptr<Expr> initializer = nullptr;
+              if(match(EQUAL)) {
+                     initializer = expression();
+              }
+              consume(SEMICOLON, "Expect ';' after variable declaration.");
+              return std::make_shared<Var>(name, initializer);
+       }
+
+       std::shared_ptr<Stmt> statement() {
+              if(match(IF)) return ifStatement();
+              if(match(PRINT)) return printStatement();
+              if(match(LEFT_BRACE)) return std::make_shared<Block>(block());
+              return expressionStatement();
+       }
+
+       std::vector<std::shared_ptr<Stmt>> block() {
+              std::vector<std::shared_ptr<Stmt>> statements;
+              while(!check(RIGHT_BRACE) && !isAtEnd()) {
+                     statements.push_back(declaration());
+              }
+              consume(RIGHT_BRACE, "Expect '}' after block.");
+              return statements;
+       }
+
+       std::shared_ptr<Stmt> ifStatement() {
+              consume(LEFT_PAREN, "Expect '(' after 'if'.");
+
+              std::shared_ptr<Expr> condition = expression();
+              
+              consume(RIGHT_PAREN, "Expect ')' after if condition.");
+              
+              std::shared_ptr<Stmt> thenBranch = statement();
+              std::shared_ptr<Stmt> elseBranch = nullptr;
+              if(match(ELSE)) {
+                     elseBranch = statement();
+              }
+              return std::make_shared<If>(condition, thenBranch, elseBranch);
+       }
+       
+
+
+       std::shared_ptr<Stmt> printStatement() {
+              std::shared_ptr<Expr> value = expression();
+              consume(SEMICOLON, "Expect ';' after value.");
+              return std::make_shared<Print>(value);
+       }
+
+       std::shared_ptr<Stmt> expressionStatement() {
+              std::shared_ptr<Expr> expr = expression();
+              consume(SEMICOLON, "Expect ';' after expression.");
+              return std::make_shared<Expression>(expr);
+       }
+
        std::shared_ptr<Expr> expression() {
-              return equality();
+              return assignment();
+       }
+
+       std::shared_ptr<Expr> assignment() {
+              std::shared_ptr<Expr> expr = orOp();
+              if(match(EQUAL)) {
+                     Token equals = previous();
+                     std::shared_ptr<Expr> value = assignment();
+                     if(std::shared_ptr<Variable> var = std::dynamic_pointer_cast<Variable>(expr)) {
+                            Token name = var->name;
+                            return std::make_shared<Assign>(name, value);
+                     }
+                     error(equals, "Invalid assignment target.");
+              }
+              return expr;
+       }
+
+       std::shared_ptr<Expr> orOp() {
+              std::shared_ptr<Expr> expr = andOp();
+              while(match(OR)) {
+                     Token op = previous();
+                     std::shared_ptr<Expr> right = andOp();
+                     expr = std::make_shared<Logical>(expr, op, right);
+              }
+              return expr;
+       }
+
+       std::shared_ptr<Expr> andOp() {
+              std::shared_ptr<Expr> expr = equality();
+              while(match(AND)) {
+                     Token op = previous();
+                     std::shared_ptr<Expr> right = equality();
+                     expr = std::make_shared<Logical>(expr, op, right);
+              }
+              return expr;
        }
 
        std::shared_ptr<Expr> equality() {
@@ -92,6 +193,9 @@ public:
 
               if(match(NUMBER, STRING))
                      return std::make_shared<Literal>(previous().literal);
+              
+              if(match(IDENTIFIER))
+                     return std::make_shared<Variable>(previous());
 
               if(match(LEFT_PAREN)) {
                      std::shared_ptr<Expr> expr = expression();

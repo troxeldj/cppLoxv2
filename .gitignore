@@ -1,0 +1,7 @@
+.vscode/
+
+src/GenerateAST
+src/Lox
+src/Lox.*/
+src/GenerateAST.*/
+src/Lox.exe

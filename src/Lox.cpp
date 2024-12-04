@@ -4,6 +4,7 @@
 #include "Parser.h"
 #include "Util.h"
 #include "Interpreter.h"
+#include "Stmt.h"
 
 bool Lox::hadError = false;
 
@@ -14,20 +15,18 @@ void Lox::runFile(const std::string& path) {
     if(hadError) std::exit(65);
 }
 
-Interpreter interpreter;
-
 void Lox::run(std::string source) {
     Scanner scanner{source};
     std::vector<Token> tokens = scanner.scanTokens();
     
     // Debug: Print tokens
     Parser parser{tokens};
-    std::shared_ptr<Expr> expression = parser.parse();
+    std::vector<std::shared_ptr<Stmt>> statements = parser.parse();
 
     if(hadError) return;
 
-
-    interpreter.interpret(expression);
+    Interpreter interpreter{};
+    interpreter.interpret(statements);
 }
 
 void Lox::error(int line, const std::string& message) {
