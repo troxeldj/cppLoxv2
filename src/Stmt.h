@@ -5,19 +5,24 @@
 #include <utility>  // std::move
 #include <vector>
 #include "Token.h"
+#include "Expr.h"
 
 struct Block;
 struct Expression;
+struct Function;
 struct If;
 struct Print;
+struct Return;
 struct Var;
 struct While;
 
 struct StmtVisitor {
   virtual std::any visitBlockStmt(std::shared_ptr<Block> stmt) = 0;
   virtual std::any visitExpressionStmt(std::shared_ptr<Expression> stmt) = 0;
+  virtual std::any visitFunctionStmt(std::shared_ptr<Function> stmt) = 0;
   virtual std::any visitIfStmt(std::shared_ptr<If> stmt) = 0;
   virtual std::any visitPrintStmt(std::shared_ptr<Print> stmt) = 0;
+  virtual std::any visitReturnStmt(std::shared_ptr<Return> stmt) = 0;
   virtual std::any visitVarStmt(std::shared_ptr<Var> stmt) = 0;
   virtual std::any visitWhileStmt(std::shared_ptr<While> stmt) = 0;
   virtual ~StmtVisitor() = default;
@@ -51,6 +56,20 @@ struct Expression: Stmt, public std::enable_shared_from_this<Expression> {
   const std::shared_ptr<Expr> expression;
 };
 
+struct Function: Stmt, public std::enable_shared_from_this<Function> {
+  Function(Token name, std::vector<Token> params, std::vector<std::shared_ptr<Stmt>> body)
+    : name{std::move(name)}, params{std::move(params)}, body{std::move(body)}
+  {}
+
+  std::any accept(StmtVisitor& visitor) override {
+    return visitor.visitFunctionStmt(shared_from_this());
+  }
+
+  const Token name;
+  const std::vector<Token> params;
+  const std::vector<std::shared_ptr<Stmt>> body;
+};
+
 struct If: Stmt, public std::enable_shared_from_this<If> {
   If(std::shared_ptr<Expr> condition, std::shared_ptr<Stmt> thenBranch, std::shared_ptr<Stmt> elseBranch)
     : condition{std::move(condition)}, thenBranch{std::move(thenBranch)}, elseBranch{std::move(elseBranch)}
@@ -75,6 +94,19 @@ struct Print: Stmt, public std::enable_shared_from_this<Print> {
   }
 
   const std::shared_ptr<Expr> expression;
+};
+
+struct Return: Stmt, public std::enable_shared_from_this<Return> {
+  Return(Token keyword, std::shared_ptr<Expr> value)
+    : keyword{std::move(keyword)}, value{std::move(value)}
+  {}
+
+  std::any accept(StmtVisitor& visitor) override {
+    return visitor.visitReturnStmt(shared_from_this());
+  }
+
+  const Token keyword;
+  const std::shared_ptr<Expr> value;
 };
 
 struct Var: Stmt, public std::enable_shared_from_this<Var> {

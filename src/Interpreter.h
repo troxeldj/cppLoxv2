@@ -2,16 +2,37 @@
 #define INTERPRETER_H
 #include <string>
 #include <stdexcept>
+#include <chrono>
 #include <iostream>
-#include "Expr.h"
-#include "Stmt.h"
+#include "LoxCallable.h"
 #include "Environment.h"
+#include "Expr.h"
+#include "LoxCallable.h"
+#include "LoxFunction.h"
+#include "LoxReturn.h"
+#include "Stmt.h"
+#include "LoxReturn.h"
 
-class Interpreter : public ExprVisitor, public StmtVisitor {
-  std::shared_ptr<Environment> environment{new Environment};
+class NativeClock : public LoxCallable {
 public:
+  int arity() override {return 0;}
+  std::any call(Interpreter& interpreter, std::vector<std::any> arguments) override {
+    auto ticks  = std::chrono::system_clock::now().time_since_epoch();
+    return std::chrono::duration<double>(ticks).count() / 1000.0; 
+  }
+  std::string toString() override {return "<native fn>";}
+};
 
-  Interpreter() = default;
+class Interpreter 
+  : public ExprVisitor, public StmtVisitor, public std::enable_shared_from_this<Interpreter> {
+  std::shared_ptr<Environment> globals{new Environment};
+  std::shared_ptr<Environment> environment = globals;
+
+
+public:
+  Interpreter() {
+    globals->define("clock", std::make_shared<NativeClock>());
+  }
 
   void interpret(std::vector<std::shared_ptr<Stmt>>& statements) {
     try {
@@ -21,6 +42,20 @@ public:
     } catch(const std::runtime_error& e) {
       std::cerr << e.what() << std::endl;
     }
+  }
+
+  void executeBlock(std::vector<std::shared_ptr<Stmt>> statements, std::shared_ptr<Environment> environment) {
+    std::shared_ptr<Environment> previous = this->environment;
+    try {
+      this->environment = environment;
+      for (std::shared_ptr<Stmt>& stmt : statements) {
+        execute(stmt);
+      }
+    } catch (...) {
+      this->environment = previous;
+      throw;
+    }
+    this->environment = previous;
   }
 
 private:
@@ -53,19 +88,26 @@ private:
     return {};
   }
 
-  void executeBlock(std::vector<std::shared_ptr<Stmt>> statements, std::shared_ptr<Environment> environment) {
-    std::shared_ptr<Environment> previous = this->environment;
-    try {
-      this->environment = environment;
-      for (std::shared_ptr<Stmt>& stmt : statements) {
-        execute(stmt);
-      }
-    } catch (...) {
-      this->environment = previous;
-      throw;
+  std::any visitCallExpr(std::shared_ptr<Call> expr) override {
+    std::any callee = evaluate(expr->callee);
+    std::vector<std::any> arguments;
+    for(const std::shared_ptr<Expr>& argument : expr->arguments) {
+      arguments.push_back(evaluate(argument));
     }
-    this->environment = previous;
+    std::shared_ptr<LoxCallable> function;
+    if (callee.type() == typeid(std::shared_ptr<LoxFunction>)) {
+      function = std::any_cast<std::shared_ptr<LoxFunction>>(callee);
+    } else {
+      throw std::runtime_error("Can only call functions and classes.");
+    }
+
+    if(arguments.size() != function->arity()) {
+      throw std::runtime_error("Expected " + std::to_string(function->arity()) + " arguments but got " + std::to_string(arguments.size()) + ".");
+    }
+
+    return function->call(*this, std::move(arguments));
   }
+
 
   std::any visitExpressionStmt(std::shared_ptr<Expression> stmt) override {
     evaluate(stmt->expression);
@@ -85,6 +127,20 @@ private:
     }
     environment->define(stmt->name.lexeme, value);
     return {};
+  }
+
+  std::any visitFunctionStmt(std::shared_ptr<Function> stmt) override {
+    std::shared_ptr<LoxFunction> function = std::make_shared<LoxFunction>(stmt, environment);
+    environment->define(stmt->name.lexeme, function);
+    return {};
+  }
+
+  std::any visitReturnStmt(std::shared_ptr<Return> stmt) override {
+    std::any value = nullptr;
+    if(stmt->value != nullptr) {
+      value = evaluate(stmt->value);
+    }
+    throw LoxReturn(value);
   }
 
   std::any visitAssignExpr(std::shared_ptr<Assign> expr) override {

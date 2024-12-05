@@ -194,6 +194,7 @@ void defineAst(
     defineType(writer, baseName, className, fields);
   }
 }
+/*
 
 int main(int argc, char* argv[]) {
   if (argc != 2) {
@@ -209,15 +210,19 @@ int main(int argc, char* argv[]) {
     "Literal  : std::any value",
     "Logical  : Expr* left, Token op, Expr* right",
     "Unary    : Token op, Expr* right",
-    "Variable : Token name"
+    "Variable : Token name",
+    "Call     : Expr* callee, Token paren, std::vector<Expr*> arguments"
   });
 
   defineAst(outputDir, "Stmt", {
     "Block     : std::vector<Stmt*> statements",
     "Expression : Expr* expression",
+    "Function : Token name, std::vector<Token> params, std::vector<Stmt*> body",
     "If        : Expr* condition, Stmt* thenBranch, Stmt* elseBranch",
     "Print      : Expr* expression",
+    "Return   : Token keyword, Expr* value",
     "Var        : Token name, Expr* initializer",
     "While    : Expr* condition, Stmt* body"
   });
 }
+*/

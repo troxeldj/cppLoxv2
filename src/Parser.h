@@ -36,12 +36,32 @@ public:
 private:
        std::shared_ptr<Stmt> declaration() {
               try {
+                     if(match(FUN)) return function("function");
                      if(match(VAR)) return varDeclaration();
                      return statement();
               } catch(const ParseError& error) {
                      syncronize();
                      return nullptr;
               }
+       }
+
+       std::shared_ptr<Stmt> function(const std::string& kind) {
+              Token name = consume(IDENTIFIER, "Expect " + kind + " name.");
+              consume(LEFT_PAREN, "Expect '(' after " + kind + " name.");
+              std::vector<Token> params;
+              if(!check(RIGHT_PAREN)) {
+                     do {
+                            if(params.size() >= 255) {
+                                   error(peek(), "Cannot have more than 255 parameters.");
+                            }
+                            params.push_back(consume(IDENTIFIER, "Expect parameter name."));
+                     } while(match(COMMA));
+              }
+              consume(RIGHT_PAREN, "Expect ')' after parameters.");
+
+              consume(LEFT_BRACE, "Expect '{' before " + kind + " body.");
+              std::vector<std::shared_ptr<Stmt>> body = block();
+              return std::make_shared<Function>(name, params, body);
        }
 
        std::shared_ptr<Stmt> varDeclaration() {
@@ -58,9 +78,20 @@ private:
               if(match(IF)) return ifStatement();
               if(match(FOR)) return forStatement();
               if(match(PRINT)) return printStatement();
+              if(match(RETURN)) return returnStatement();
               if(match(WHILE)) return whileStatement();
               if(match(LEFT_BRACE)) return std::make_shared<Block>(block());
               return expressionStatement();
+       }
+
+       std::shared_ptr<Stmt> returnStatement() {
+              Token keyword = previous();
+              std::shared_ptr<Expr> value = nullptr;
+              if(!check(SEMICOLON)) {
+                     value = expression();
+              }
+              consume(SEMICOLON, "Expect ';' after return value.");
+              return std::make_shared<Return>(keyword, value);
        }
 
        std::vector<std::shared_ptr<Stmt>> block() {
@@ -237,7 +268,7 @@ private:
                      std::shared_ptr<Expr> right = unary();
                      return std::make_shared<Unary>(std::move(op), right);
               }
-              return primary();
+              return call();
        }
 
        std::shared_ptr<Expr> primary() {
@@ -258,6 +289,32 @@ private:
               }
 
               throw error(peek(), "Expected Expression.");
+       }
+
+       std::shared_ptr<Expr> call() {
+              std::shared_ptr<Expr> expr = primary();
+              while(true) {
+                     if(match(LEFT_PAREN)) {
+                            expr = finishCall(expr);
+                     } else {
+                            break;
+                     }
+              }
+              return expr;
+       }
+
+       std::shared_ptr<Expr> finishCall(std::shared_ptr<Expr> callee) {
+              std::vector<std::shared_ptr<Expr>> arguments;
+              if(!check(RIGHT_PAREN)) {
+                     do {
+                            if(arguments.size() >= 255) {
+                                   error(peek(), "Cannot have more than 255 arguments.");
+                            }
+                            arguments.push_back(expression());
+                     } while(match(COMMA));
+              }
+              Token paren = consume(RIGHT_PAREN, "Expect ')' after arguments.");
+              return std::make_shared<Call>(callee, paren, arguments);
        }
 
        template <class... T>

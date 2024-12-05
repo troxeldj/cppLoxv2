@@ -1,10 +1,10 @@
 #include <iostream>
 #include "Lox.h"
-#include "Scanner.h"
-#include "Parser.h"
 #include "Util.h"
 #include "Interpreter.h"
 #include "Stmt.h"
+#include "Scanner.h"
+#include "Parser.h"
 
 bool Lox::hadError = false;
 
